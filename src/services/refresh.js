@@ -57,8 +57,8 @@ async function refreshAll() {
   const now = new Date();
   // Use Date object for MySQL DATETIME fields to avoid timezone/Z formatting issues
   const nowDate = now;
-  // Keep ISO string in metadata (text) for API responses
-  const nowIso = now.toISOString();
+  // Keep ISO string in metadata (text) for API responses (without milliseconds)
+  const nowIso = now.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
   // Prepare computed rows
   const prepared = countriesData.map((c) => {
@@ -116,8 +116,8 @@ async function refreshAll() {
     throw err;
   }
 
-  // Begin transaction: upsert rows, then update metadata, then generate image
-  return knex.transaction(async (trx) => {
+  // Begin transaction: upsert rows, then update metadata
+  const txResult = await knex.transaction(async (trx) => {
     // Load existing by name (case-insensitive)
     const existingRows = await trx('countries').select('id', 'name');
     const existingMap = new Map(); // lower(name) -> {id,name}
@@ -158,11 +158,18 @@ async function refreshAll() {
       .onConflict('key')
       .merge({ value: nowIso, updated_at: trx.fn.now() });
 
-    // Generate summary image
-    await generateSummaryImage(trx, pathJoinCache('summary.png'));
-
     return { updated: toUpdate.length, inserted: toInsert.length, total: prepared.length, last_refreshed_at: nowIso };
   });
+
+  // Generate summary image OUTSIDE the transaction so DB writes are committed even if image fails
+  try {
+    await generateSummaryImage(knex, pathJoinCache('summary.png'));
+  } catch (e) {
+    // Log but do not fail the refresh
+    console.error('Summary image generation failed:', e.message);
+  }
+
+  return txResult;
 }
 
 const path = require('path');
