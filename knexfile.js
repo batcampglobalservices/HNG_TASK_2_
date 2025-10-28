@@ -7,7 +7,9 @@ const {
   DB_USER,
   DB_PASSWORD,
   DB_NAME,
-  DB_SSL
+  DB_SSL,
+  DB_SSL_CA,
+  DB_SSL_REJECT_UNAUTHORIZED
 } = process.env;
 
 const shared = {
@@ -18,6 +20,16 @@ const shared = {
   }
 };
 
+function buildSsl(urlStr) {
+  const sslEnabled = (DB_SSL === 'true') || (urlStr && (/ssl=true/i.test(urlStr) || /ssl-mode=REQUIRED/i.test(urlStr)));
+  if (!sslEnabled) return undefined;
+  if (DB_SSL_CA) {
+    return { ca: DB_SSL_CA, rejectUnauthorized: true };
+  }
+  const reject = DB_SSL_REJECT_UNAUTHORIZED ? DB_SSL_REJECT_UNAUTHORIZED === 'true' : false;
+  return { rejectUnauthorized: reject };
+}
+
 /** @type {import('knex').Knex.Config} */
 const config = {
   client: 'mysql2',
@@ -25,14 +37,13 @@ const config = {
     if (DATABASE_URL) {
       try {
         const u = new URL(DATABASE_URL);
-        const sslRequired = (DB_SSL === 'true') || /ssl=true/i.test(DATABASE_URL) || /ssl-mode=REQUIRED/i.test(DATABASE_URL);
         return {
           host: u.hostname,
           port: u.port ? Number(u.port) : 3306,
           user: decodeURIComponent(u.username),
           password: decodeURIComponent(u.password),
           database: u.pathname.replace(/^\//, ''),
-          ssl: sslRequired ? { rejectUnauthorized: true } : undefined
+          ssl: buildSsl(DATABASE_URL)
         };
       } catch (e) {
         // Fallback to raw string if parsing fails
@@ -45,7 +56,7 @@ const config = {
       user: DB_USER || 'root',
       password: DB_PASSWORD || '',
       database: DB_NAME || 'countries',
-      ssl: DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined
+      ssl: buildSsl()
     };
   })(),
   ...shared
