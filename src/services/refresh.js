@@ -55,6 +55,9 @@ async function refreshAll() {
   }
 
   const now = new Date();
+  // Use Date object for MySQL DATETIME fields to avoid timezone/Z formatting issues
+  const nowDate = now;
+  // Keep ISO string in metadata (text) for API responses
   const nowIso = now.toISOString();
 
   // Prepare computed rows
@@ -99,7 +102,8 @@ async function refreshAll() {
       exchange_rate,
       estimated_gdp,
       flag_url,
-      last_refreshed_at: nowIso
+  // Store as Date object so mysql2 formats correctly for DATETIME
+  last_refreshed_at: nowDate
     };
   });
 
